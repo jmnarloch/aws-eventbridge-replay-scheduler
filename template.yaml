@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Amazon EventBridge Replay Scheduler SAM quick start
+
+Parameters:
+  ScheduleExpression:
+    Type: String
+    Description: 'Cron expression used for scheduling the replay execution.'
+    Default: '0 0 1 * ? *'
+
+Globals:
+  Function:
+    Timeout: 30
+
+Resources:
+  EventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: 'custom-event-bus'
+
+  EventBusArchive:
+    Type: AWS::Events::Archive
+    Properties:
+      ArchiveName: 'custom-event-bus-archive'
+      Description: 'Archive created by Replay Scheduler'
+      RetentionDays: 30
+      SourceArn: !GetAtt EventBus.Arn
+
+  ReplayerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: replayer/
+      Handler: app.lambdaHandler
+      Runtime: nodejs12.x
+      Environment:
+        Variables:
+          AWS_EVENTBRIDGE_EVENT_BUS_ARN: !GetAtt EventBus.Arn
+          AWS_EVENTBRIDGE_ARCHIVE_ARN: !GetAtt EventBusArchive.Arn
+          AWS_EVENTBRIDGE_REPLAY_SCHEDULE: '0 0 1 * * *'
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - events:StartReplay
+              Resource: '*'
+      Events:
+        InvocationLevel:
+          Type: Schedule
+          Properties:
+            Schedule: !Sub 'cron(${ScheduleExpression})'
+
+Outputs:
+  EventBus:
+    Description: 'EventBus ARN'
+    Value: !GetAtt EventBus.Arn
+  ReplayerFunction:
+    Description: 'Replayer Lambda Function ARN'
+    Value: !GetAtt ReplayerFunction.Arn
+  ReplayerFunctionIamRole:
+    Description: 'Implicit IAM Role created for Replayer function'
+    Value: !GetAtt ReplayerFunctionRole.Arn
